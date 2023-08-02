@@ -26,9 +26,13 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
+ * 
+ * 01-08-2023 - Se hacen modificaciones para php 8.2 que no acepta propiedades dinamicas 
  */
 
-namespace Common;
+namespace Upload;
+use \Common\Util;
+
 
 class File {
 
@@ -103,9 +107,14 @@ class File {
 	private $_validations = [
 		'extensions' => [],
 		'categories' => [],
-		'size' => 200,
+		'vsize' => 200, 
 		'custom' => null
 	];
+	//dvd
+	private $extensions = [];
+	private $categories = [];
+	private $vsize = 200;
+	private $custom = null;
 
 	private $_default_properties = [
 		'name' => '',
@@ -114,6 +123,17 @@ class File {
 		'error' => UPLOAD_ERR_OK,
 		'extension' => ''
 	];
+	//dvd
+	private $name = '';
+	private $tmp_name = '';
+	private $size = 0;
+	private $error = UPLOAD_ERR_OK;
+	private $extension = '';
+
+
+	private $basename = '';
+	private $category = '';
+	private $type = '';
 
 	// custom filtered errors
 	const UPLOAD_ERR_EXTENSION_FILTER = 100;
@@ -131,14 +151,14 @@ class File {
 	 * @var array
 	 */
 	private $_error_messages = [
-		UPLOAD_ERR_OK => 'There is no error, the file uploaded with success',
-		UPLOAD_ERR_INI_SIZE => 'The uploaded file exceeds the maximum upload size allowed by the server',
-		UPLOAD_ERR_FORM_SIZE => 'The uploaded file exceeds the MAX_FILE_SIZE directive that was specified in the HTML form',
-		UPLOAD_ERR_PARTIAL => 'The uploaded file was only partially uploaded',
-		UPLOAD_ERR_NO_FILE => 'No file was uploaded',
-		UPLOAD_ERR_NO_TMP_DIR => 'Missing a temporary folder',
-		UPLOAD_ERR_CANT_WRITE => 'Failed to write file to disk',
-		UPLOAD_ERR_EXTENSION => 'A PHP extension stopped the file upload',
+		UPLOAD_ERR_OK => 'There is no error, the file uploaded with success.',
+		UPLOAD_ERR_INI_SIZE => 'The uploaded file exceeds the maximum upload size allowed by the server.',
+		UPLOAD_ERR_FORM_SIZE => 'The uploaded file exceeds the MAX_FILE_SIZE directive that was specified in the HTML form.',
+		UPLOAD_ERR_PARTIAL => 'The uploaded file was only partially uploaded.',
+		UPLOAD_ERR_NO_FILE => 'No file was uploaded.',
+		UPLOAD_ERR_NO_TMP_DIR => 'Missing a temporary folder. Introduced in PHP 4.3.10 and PHP 5.0.3.',
+		UPLOAD_ERR_CANT_WRITE => 'Failed to write file to disk. Introduced in PHP 5.1.0.',
+		UPLOAD_ERR_EXTENSION => 'A PHP extension stopped the file upload. PHP does not provide a way to ascertain which extension caused the file upload to stop;examining the list of loaded extensions with phpinfo() may help. Introduced in PHP 5.2.0.',
 		self::UPLOAD_ERR_EXTENSION_FILTER => 'File type not allowed',
 		self::UPLOAD_ERR_CATEGORY_FILTER => 'File not allowed',
 		self::UPLOAD_ERR_SIZE_FILTER => 'File size not allowed'
@@ -153,13 +173,13 @@ class File {
 		$this->_validations = Util::setValues($this->_validations, $validations);
 		$this->_default_properties = Util::setValues($this->_default_properties, $properties);
 
-		// set this instance's properties from the provided data
+		// set this instance's properties from the provided data	
 		foreach ($this->_default_properties as $key => $value) {
 			$this->{$key} = $value;
 		}
 
 		// get the file info and add them as this instance's properties
-		$info = $this->getInfo();
+		$info = $this->get_info();
 		foreach ($info as $key => $info) {
 			$this->{$key} = $info;
 		}
@@ -183,14 +203,14 @@ class File {
 	 * @param  boolean $return_str should it return an string or array
 	 * @return string/array        returns the error string or errors array
 	 */
-	public function getError($return_str = true) {
+	public function get_error($return_str = true) {
 		$messages = $this->_error_messages;
 		$errors = array_map(function($error) use ($messages) {
 			if (isset($messages[$error])) return $messages[$error];
 			else return is_int($error) ? 'Unknown File Error' : $error;
 
 		}, $this->_errors);
-		return $return_str ? implode('. ', $errors) : $errors;
+		return $return_str ? implode('; ', $errors) : $errors;
 	}
 
 	/**
@@ -198,7 +218,7 @@ class File {
 	 * @param int $error_num 	error type
 	 * @param string $message   error message
 	 */
-	public function setErrorMessage($error_num, $message = '') {
+	public function set_error_message($error_num, $message = '') {
 		$this->_error_messages[$error_num] = $message;
 	}
 
@@ -218,8 +238,8 @@ class File {
 			'unit' => 'MB',
 			'message' => '[size (kb): '.$this->size.'] '.$this->_error_messages[self::UPLOAD_ERR_SIZE_FILTER]
 		];
-		$size_filter = Util::setValues($def_size_filter, $this->_validations['size'], 'max');
-		$this->setErrorMessage(self::UPLOAD_ERR_SIZE_FILTER, $size_filter['message']);
+		$size_filter = Util::setValues($def_size_filter, $this->_validations['vsize'], 'max');
+		$this->set_error_message(self::UPLOAD_ERR_SIZE_FILTER, $size_filter['message']);
 
 		$get_actual_size = function($size, $unit) {
 			switch (strtolower($unit)) {
@@ -253,12 +273,12 @@ class File {
 			}
 
 			$ext_filter = Util::setValues($def_ext_filter, $extensions, 'is');
-			$this->setErrorMessage(self::UPLOAD_ERR_EXTENSION_FILTER, $ext_filter['message']);
+			$this->set_error_message(self::UPLOAD_ERR_EXTENSION_FILTER, $ext_filter['message']);
 
 			if (!is_array($ext_filter['is'])) $ext_filter['is'] = [$ext_filter['is']];
 			if (!is_array($ext_filter['not'])) $ext_filter['not'] = [$ext_filter['not']];
 
-			if (!in_array(strtolower($this->extension), $ext_filter['is']) || ($ext_filter['not'] && in_array(strtolower($this->extension), $ext_filter['not'])))
+			if (!in_array($this->extension, $ext_filter['is']) || ($ext_filter['not'] && in_array($this->extension, $ext_filter['not'])))
 				$this->_errors[] = self::UPLOAD_ERR_EXTENSION_FILTER;
 		}
 
@@ -278,7 +298,7 @@ class File {
 			}
 
 			$cat_filter = Util::setValues($def_cat_filter, $categories, 'is');
-			$this->setErrorMessage(self::UPLOAD_ERR_CATEGORY_FILTER, $cat_filter['message']);
+			$this->set_error_message(self::UPLOAD_ERR_CATEGORY_FILTER, $cat_filter['message']);
 
 			if (!is_array($cat_filter['is'])) $cat_filter['is'] = [$cat_filter['is']];
 			if (!is_array($cat_filter['not'])) $cat_filter['not'] = [$cat_filter['not']];
@@ -301,9 +321,9 @@ class File {
 		return !$this->_errors;
 	}
 
-	private function _initExif() {
+	private function _init_exif() {
 		if (!$this->_exif) {
-			switch (strtolower($this->extension)) {
+			switch ($this->extension) {
 				case '.jpg':
 				case '.jpeg':
 				case '.tiff':
@@ -317,17 +337,17 @@ class File {
 	 * get the exif GPS data (if the file is an image)
 	 * @return array array of lat/lng if success, otherwise false
 	 */
-	public function getExifGps() {
-		$this->_initExif();
-		return $this->_exif ? $this->_exif->getGps() : false;
+	public function get_exif_gps() {
+		$this->_init_exif();
+		return $this->_exif ? $this->_exif->get_gps() : false;
 	}
 
 	/**
 	 * get the exif data (if the file is an image)
 	 * @return array array of exif info if success, otherwise false
 	 */
-	public function getExif() {
-		$this->_initExif();
+	public function get_exif() {
+		$this->_init_exif();
 		return $this->_exif ? $this->_exif->get_data() : false;
 	}
 
@@ -344,7 +364,7 @@ class File {
 	 * get the file info evaluated from the $name property
 	 * @return array  file info
 	 */
-	public function getInfo() {
+	public function get_info() {
 		preg_match('/\.[^\.]+$/i', $this->name, $ext);
 		preg_match('/\.\w+/i', isset($ext[0]) ? $ext[0] : '', $ext);
 
@@ -358,7 +378,6 @@ class File {
             case '.docx':
             case '.xls':
             case '.xlsx':
-            case '.csv':
                 $category = 'document';
                 break;
             case '.png':
@@ -429,8 +448,8 @@ class File {
 	 * get base64_encode of the file
 	 * @return string base64 encoded string
 	 */
-	public function getBase64() {
-		$content = $this->getContents();
+	public function get_base64() {
+		$content = $this->get_contents();
 		return $content ? base64_encode($content) : false;
 	}
 
@@ -438,7 +457,7 @@ class File {
 	 * get contents
 	 * @return string content
 	 */
-	public function getContents() {
+	public function get_contents() {
 		return file_get_contents($this->tmp_name);
 	}
 
@@ -446,7 +465,7 @@ class File {
 	 * format the size of the file to a readable string
 	 * @return string formatted file size
 	 */
-	public function formatSize() {
+	public function format_size() {
 		$bytes = $this->size;
 
         if ($bytes >= 1073741824) {
